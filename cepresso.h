@@ -1695,6 +1695,8 @@ void hs_add_write_event(http_request_t* request) {
 extern "C" {
 #endif
 
+#define CANNOT "Cannot GET "
+
 typedef struct cepresso cepresso;
 
 typedef struct cepresso_res cepresso_res;
@@ -1747,6 +1749,24 @@ int is_method(struct http_request_s *request, char const *target) {
     return len == url.len && memcmp(url.buf, target, url.len) == 0;
 }
 
+char* string_format(char *format, ...)
+{
+  va_list arg;
+  int len;
+  va_start (arg, format);
+  
+  len = vsnprintf(0, 0, format, arg);
+  char* str = (char*) malloc((len + 1) * sizeof(char));
+  if (str == NULL)
+  {
+    return NULL;
+  }
+  va_start (arg, format);
+  vsnprintf(str, (len + 1), format, arg);
+  va_end (arg);
+  return str;
+}
+
 request *requests;
 int requests_s = 0;
 
@@ -1793,9 +1813,18 @@ void get(char *path, callback callback) {
     }
 }
 
-void handle_request(cepresso_req *req, struct http_request_s *request) {
+void not_found(struct http_request_s* request, struct http_response_s* response)
+{
+  	http_string_t url = http_request_target(request);
+  	char* msg = string_format("%s%s", CANNOT,url.buf);
+    http_response_status(response, 404);
+    http_response_header(response, "content-type", "text/plain");
+    http_response_body(response, msg, sizeof(CANNOT) + url.len);
+    http_respond(request, response);
+    free(msg);
+}
 
-    struct http_response_s *response = http_response_init();
+void handle_request(cepresso_req *req, struct http_request_s *request, struct http_response_s *response) {
 
     if (req->code != 0) {
         http_response_status(response, req->code);
@@ -1811,14 +1840,21 @@ void handle_request(cepresso_req *req, struct http_request_s *request) {
 
 
 void main_handler(struct http_request_s *request) {
+	struct http_response_s* response = http_response_init();
+    int exists = 0;
     if (is_method(request, "GET")) {
         for (int i = 0; i < requests_s; i++) {
             if (is_path(request, requests[i].path)) {
                 requests[i].callback(requests[i].req, requests[i].res);
-                handle_request(requests[i].req, request);
+                handle_request(requests[i].req, request, response);
+                exists = 1;
                 break;
             }
         }
+        if (!exists)
+      	{
+        	not_found(request, response);
+      	}
     }
 }
 
