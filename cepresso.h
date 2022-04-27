@@ -1720,6 +1720,8 @@ struct cepresso_res {
     void (*status)(cepresso_req *, int);
 
     void (*set)(cepresso_req *, char *, char *);
+
+    void (*send_file)(cepresso_req *, char *);
 };
 
 typedef struct {
@@ -1749,22 +1751,43 @@ int is_method(struct http_request_s *request, char const *target) {
     return len == url.len && memcmp(url.buf, target, url.len) == 0;
 }
 
-char* string_format(char *format, ...)
-{
-  va_list arg;
-  int len;
-  va_start (arg, format);
-  
-  len = vsnprintf(0, 0, format, arg);
-  char* str = (char*) malloc((len + 1) * sizeof(char));
-  if (str == NULL)
-  {
-    return NULL;
-  }
-  va_start (arg, format);
-  vsnprintf(str, (len + 1), format, arg);
-  va_end (arg);
-  return str;
+char *string_format(char *format, ...) {
+    va_list arg;
+    int len;
+    va_start(arg, format);
+
+    len = vsnprintf(0, 0, format, arg);
+    char *str = (char *) malloc((len + 1) * sizeof(char));
+    if (str == NULL) {
+        return NULL;
+    }
+    va_start(arg, format);
+    vsnprintf(str, (len + 1), format, arg);
+    va_end(arg);
+    return str;
+}
+
+char *file_read(char *filename) {
+    FILE *file;
+    int ch;
+    if ((file = fopen(filename, "r")) == NULL)
+        return NULL;
+    if (fseek(file, 0L, SEEK_END))
+        return NULL;
+    long size = ftell(file);
+    if (fseek(file, 0L, SEEK_SET))
+        return NULL;
+    char *content = (char *) malloc((size + 1) * sizeof(char));
+    if (content == NULL)
+        return NULL;
+    int i = 0;
+    while ((ch = getc(file)) != EOF) {
+        content[i] = (char) ch;
+        i++;
+    }
+    if (fclose(file))
+        return NULL;
+    return content;
 }
 
 request *requests;
@@ -1783,6 +1806,10 @@ void set(cepresso_req *self, char *key, char *value) {
     self->value = value;
 }
 
+void send_file(cepresso_req *self, char *file_name) {
+    self->body = file_read(file_name);
+}
+
 void get(char *path, callback callback) {
 
     if (requests == NULL) {
@@ -1794,6 +1821,7 @@ void get(char *path, callback callback) {
     res->send = &_send;
     res->status = &status;
     res->set = &set;
+    res->send_file = &send_file;
 
     int exists = 0;
     for (int i = 0; i < requests_s; i++) {
@@ -1813,10 +1841,9 @@ void get(char *path, callback callback) {
     }
 }
 
-void not_found(struct http_request_s* request, struct http_response_s* response)
-{
-  	http_string_t url = http_request_target(request);
-  	char* msg = string_format("%s%s", CANNOT,url.buf);
+void not_found(struct http_request_s *request, struct http_response_s *response) {
+    http_string_t url = http_request_target(request);
+    char *msg = string_format("%s%s", CANNOT, url.buf);
     http_response_status(response, 404);
     http_response_header(response, "content-type", "text/plain");
     http_response_body(response, msg, sizeof(CANNOT) + url.len);
@@ -1840,7 +1867,7 @@ void handle_request(cepresso_req *req, struct http_request_s *request, struct ht
 
 
 void main_handler(struct http_request_s *request) {
-	struct http_response_s* response = http_response_init();
+    struct http_response_s *response = http_response_init();
     int exists = 0;
     if (is_method(request, "GET")) {
         for (int i = 0; i < requests_s; i++) {
@@ -1851,10 +1878,9 @@ void main_handler(struct http_request_s *request) {
                 break;
             }
         }
-        if (!exists)
-      	{
-        	not_found(request, response);
-      	}
+        if (!exists) {
+            not_found(request, response);
+        }
     }
 }
 
