@@ -18,9 +18,9 @@ A mini web framework for C. It's written on top of [httpserver.h](https://github
 
 void cb(cepresso_req* req, cepresso_res* res)
 {
-  res->status(req,200);
-  res->set(req,"content-type", "text/html");
-  res->send(req,"<h1>Hello World</h1>");
+	res->status(res,200);
+  	res->set(res,"content-type", "text/html");
+  	res->send(res,"<h1>Hello World</h1>");
 }
 
 int main()
@@ -29,7 +29,6 @@ int main()
   	app = cepresso_init();
 	app->get("/", cb);
 	app->listen(app,3000);
-	return 0;
 }
 ```
 
