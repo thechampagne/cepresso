@@ -1701,18 +1701,20 @@ typedef struct cepresso cepresso;
 
 typedef struct cepresso_res cepresso_res;
 
-typedef struct {
-    char *body;
-    char *key;
-    char *value;
-    int code;
-} cepresso_req;
+typedef struct cepresso_req cepresso_req;
 
 #ifdef __cplusplus
 }
 #endif
 
 typedef void (*callback)(cepresso_req *, cepresso_res *);
+
+struct cepresso_req {
+    char** keys;
+    char** values;
+    size_t length;
+    char* (*headers)(cepresso_req*,char*);
+};
 
 struct cepresso_res {
 	char *body;
@@ -1815,6 +1817,18 @@ void send_file(cepresso_res *self, char *file_name) {
     self->body = file_read(file_name);
 }
 
+char* _headers(cepresso_req* self, char* s)
+{
+  for (int i = 0; i < self->length; i++)
+  {
+    if (strcasecmp(self->keys[i], s) == 0)
+    {
+      return self->values[i];
+    }
+  }
+  return NULL;
+}
+
 void get(char *path, callback callback) {
 
     if (requests == NULL) {
@@ -1822,6 +1836,7 @@ void get(char *path, callback callback) {
     }
 
     cepresso_req *req = (cepresso_req *) malloc(sizeof(cepresso_req));
+    req->headers = &_headers;
     cepresso_res *res = (cepresso_res *) malloc(sizeof(cepresso_res));
     res->send = &_send;
     res->status = &status;
@@ -1856,6 +1871,31 @@ void not_found(struct http_request_s *request, struct http_response_s *response)
     free(msg);
 }
 
+void _get_headers(cepresso_req *req, struct http_request_s *request)
+{
+    int iter = 0;
+    http_string_t key, val;
+    char** keys = (char**) malloc(sizeof(char*));
+    char** values = (char**) malloc(sizeof(char*));
+    int i = 0;
+    while (http_request_iterate_headers(request, &key, &val, &iter)) {
+      if (i != 0)
+      {
+        keys = (char**) realloc(keys, (i + 1) * sizeof(char*));
+        values = (char**) realloc(values, (i + 1) * sizeof(char*));
+      }
+      keys[i] = (char*) malloc((key.len ) * sizeof(char));
+      values[i] = (char*) malloc((val.len ) * sizeof(char));
+
+      strncpy(keys[i], key.buf, key.len);
+      strncpy(values[i], val.buf, val.len);
+      i++;
+    }
+  req->keys = keys;
+  req->values = values;
+  req->length = i;
+}
+
 void handle_request(cepresso_res *res, struct http_request_s *request, struct http_response_s *response) {
 
     if (res->code != 0) {
@@ -1877,6 +1917,7 @@ void main_handler(struct http_request_s *request) {
     if (is_method(request, "GET")) {
         for (int i = 0; i < requests_s; i++) {
             if (is_path(request, requests[i].path)) {
+            	_get_headers(requests[i].req, request);
                 requests[i].callback(requests[i].req, requests[i].res);
                 handle_request(requests[i].res, request, response);
                 exists = 1;
