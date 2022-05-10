@@ -1691,11 +1691,11 @@ void hs_add_write_event(http_request_t* request) {
 
 // * * * * * * * * * * * * * * * * * "httpserver.h" * * * * * * * * * * * * * * * * *
 
+#define CANNOT "Cannot GET "
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define CANNOT "Cannot GET "
 
 typedef struct cepresso cepresso;
 
@@ -1715,13 +1715,18 @@ typedef struct {
 typedef void (*callback)(cepresso_req *, cepresso_res *);
 
 struct cepresso_res {
-    void (*send)(cepresso_req *, char *);
+	char *body;
+    char *key;
+    char *value;
+    int code;
 
-    void (*status)(cepresso_req *, int);
+    void (*send)(cepresso_res *, char *);
 
-    void (*set)(cepresso_req *, char *, char *);
+    void (*status)(cepresso_res *, int);
 
-    void (*send_file)(cepresso_req *, char *);
+    void (*set)(cepresso_res *, char *, char *);
+
+    void (*send_file)(cepresso_res *, char *);
 };
 
 typedef struct {
@@ -1793,20 +1798,20 @@ char *file_read(char *filename) {
 request *requests;
 int requests_s = 0;
 
-void _send(cepresso_req *self, char *body) {
+void _send(cepresso_res *self, char *body) {
     self->body = body;
 }
 
-void status(cepresso_req *self, int code) {
+void status(cepresso_res *self, int code) {
     self->code = code;
 }
 
-void set(cepresso_req *self, char *key, char *value) {
+void set(cepresso_res *self, char *key, char *value) {
     self->key = key;
     self->value = value;
 }
 
-void send_file(cepresso_req *self, char *file_name) {
+void send_file(cepresso_res *self, char *file_name) {
     self->body = file_read(file_name);
 }
 
@@ -1851,16 +1856,16 @@ void not_found(struct http_request_s *request, struct http_response_s *response)
     free(msg);
 }
 
-void handle_request(cepresso_req *req, struct http_request_s *request, struct http_response_s *response) {
+void handle_request(cepresso_res *res, struct http_request_s *request, struct http_response_s *response) {
 
-    if (req->code != 0) {
-        http_response_status(response, req->code);
+    if (res->code != 0) {
+        http_response_status(response, res->code);
     }
-    if (req->key != NULL && req->value != NULL) {
-        http_response_header(response, req->key, req->value);
+    if (res->key != NULL && res->value != NULL) {
+        http_response_header(response, res->key, res->value);
     }
-    if (req->body != NULL) {
-        http_response_body(response, req->body, strlen(req->body));
+    if (res->body != NULL) {
+        http_response_body(response, res->body, strlen(res->body));
     }
     http_respond(request, response);
 }
@@ -1873,7 +1878,7 @@ void main_handler(struct http_request_s *request) {
         for (int i = 0; i < requests_s; i++) {
             if (is_path(request, requests[i].path)) {
                 requests[i].callback(requests[i].req, requests[i].res);
-                handle_request(requests[i].req, request, response);
+                handle_request(requests[i].res, request, response);
                 exists = 1;
                 break;
             }
